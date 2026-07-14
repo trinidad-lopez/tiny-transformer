@@ -22,10 +22,26 @@ class BigramLanguageModel(nn.Module):
         self.flatten = nn.Flatten()
         self.linear = nn.Linear(32, 32)
         self.embedding = nn.Embedding(32, 32)
+        self.optimizer = torch.optim.SGD(self.embedding.parameters(), lr= 0.1)
 
-    def forward(self, x):
+    def forward(self, x, target=None):
         logits = self.embedding(x)
-        return logits
+
+        if target == None:
+            return logits
+        else:
+            prediction = torch.reshape(logits, [32,32])
+            targets = torch.reshape(target, [32])
+            criterion = nn.CrossEntropyLoss()
+            loss = criterion(prediction, targets)
+
+            self.optimizer.zero_grad()
+
+            loss.backward()
+
+            self.optimizer.step()
+
+            return logits, loss
     
 '''
 1. Store a trainable token-to-logits table.
@@ -51,6 +67,34 @@ if __name__ == "__main__":
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
     print(f"Using {device} device")
     bigram_model = BigramLanguageModel().to(device)
-    print(bigram_model)
-    print(bigram_model.named_parameters)
-    print(bigram_model(x_tensor))
+    
+    print("\n\tTraining: ")
+    for x in range(1000):
+        logits, loss = bigram_model(x_tensor, y_tensor)
+
+        print(f"step {x}: loss {loss}")
+
+    generated_text = "This"
+
+    print("\n\tGenerate: ")
+
+    print(f"Starting text: {generated_text}")
+    with torch.no_grad():
+        for y in range(10):
+            input_token = generated_text[-1]
+            input_token_id =  stoi.string_to_ids(vocab, input_token)
+            logits = bigram_model(torch.tensor(input_token_id, dtype=torch.long))
+            argmax_token_id = torch.argmax(logits).item()
+            probabilities = torch.softmax(logits, dim=1)
+            softmax_token_id = torch.multinomial(probabilities, num_samples=1).item()
+
+            output_token_id = softmax_token_id
+
+            output_token = itos.ids_to_string(vocab, [output_token_id])
+
+            print(f"step {y}: in_token='{input_token}' (ID:{input_token_id}) | output_token='{output_token}' (ID:{output_token_id})")
+            
+            generated_text = generated_text+output_token
+
+    print(generated_text)
+        
