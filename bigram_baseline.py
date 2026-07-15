@@ -15,34 +15,43 @@ import input_target
 7. Generate a small text sample.
 '''
 
-class BigramLanguageModel(nn.Module):
+class DirectBigramLookupModel(nn.Module):
 
-    def __init__(self):
+    def __init__(self, vocab_size):
         super().__init__()
         self.flatten = nn.Flatten()
-        self.linear = nn.Linear(32, 32)
-        self.embedding = nn.Embedding(32, 32)
-        self.optimizer = torch.optim.SGD(self.embedding.parameters(), lr= 0.1)
+        self.embedding = nn.Embedding(vocab_size, vocab_size)
+        self.layers = self.embedding
+        self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, x, target=None):
-        logits = self.embedding(x)
+        logits = self.layers(x)
 
         if target == None:
             return logits
         else:
             prediction = torch.reshape(logits, [32,32])
             targets = torch.reshape(target, [32])
-            criterion = nn.CrossEntropyLoss()
-            loss = criterion(prediction, targets)
+            loss = self.criterion(prediction, targets)
 
-            self.optimizer.zero_grad()
+            optimizer = torch.optim.SGD(self.layers.parameters(), lr= 0.1)
+            optimizer.zero_grad()
 
             loss.backward()
 
-            self.optimizer.step()
+            optimizer.step()
 
             return logits, loss
-    
+
+class EmbeddingProjectionBigramModel(DirectBigramLookupModel):
+    def __init__(self, vocab_size, n_embd):
+        super().__init__(vocab_size)
+        self.emb_linear_stack = nn.Sequential(
+            nn.Embedding(vocab_size, n_embd),    #Vocabulary -> Channels/Hidden numerical values
+            nn.Linear(n_embd, vocab_size)        #Channels -> Vocabulary/Logits
+        )
+        self.layers = self.emb_linear_stack
+
 '''
 1. Store a trainable token-to-logits table.
 2. Receive x_tensor with shape [B, T].
@@ -66,7 +75,7 @@ if __name__ == "__main__":
 
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
     print(f"Using {device} device")
-    bigram_model = BigramLanguageModel().to(device)
+    bigram_model = EmbeddingProjectionBigramModel(32, 16).to(device)
     
     print("\n\tTraining: ")
     for x in range(1000):
@@ -97,4 +106,3 @@ if __name__ == "__main__":
             generated_text = generated_text+output_token
 
     print(generated_text)
-        
