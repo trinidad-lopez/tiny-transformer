@@ -1,10 +1,22 @@
 import ast
+from collections.abc import Iterable
+import copy
 
-def string_to_ids(vocabulary, string):
+def string_to_ids(vocabulary, arg):
     ids = []
-    for char in string:
-        if char in vocabulary:
-            ids.append(vocabulary.index(char) )
+    if isinstance(arg, Iterable) and not isinstance(arg, (str, bytes, bytearray)):
+        iteration = arg
+    else:
+        iteration = [arg]
+    
+    n = 0
+    for x in iteration:
+        ids.insert(n+1, [])
+        for char in x:
+            if char in vocabulary:
+                ids[n].append(vocabulary.index(char))
+        
+        n+=1
 
     return ids
 

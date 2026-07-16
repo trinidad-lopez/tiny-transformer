@@ -1,8 +1,15 @@
 import ast
+from collections.abc import Iterable
 
-def ids_to_string(vocabulary, ids):
+def ids_to_string(vocabulary, arg):
     string = ""
-    for id in ids:
+
+    if isinstance(arg, Iterable) and not isinstance(arg, (str, bytes, bytearray)):
+        iteration = arg
+    else:
+        iteration = [arg]
+
+    for id in iteration:
         string += vocabulary[id]
 
     return string

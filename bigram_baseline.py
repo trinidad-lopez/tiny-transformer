@@ -4,6 +4,7 @@ import ast
 import stoi
 import itos
 import input_target
+import random
 
 '''
 1. Make a batch function that returns x and y tensors.
@@ -21,11 +22,11 @@ class DirectBigramLookupModel(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.embedding = nn.Embedding(vocab_size, vocab_size)
-        self.layers = self.embedding
         self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = torch.optim.SGD(self.embedding.parameters(), lr= 0.1)
 
     def forward(self, x, target=None):
-        logits = self.layers(x)
+        logits = self.embedding(x)
 
         if target == None:
             return logits
@@ -34,23 +35,41 @@ class DirectBigramLookupModel(nn.Module):
             targets = torch.reshape(target, [32])
             loss = self.criterion(prediction, targets)
 
-            optimizer = torch.optim.SGD(self.layers.parameters(), lr= 0.1)
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
 
             loss.backward()
 
-            optimizer.step()
+            self.optimizer.step()
 
-            return logits, loss
+            return logits, loss.item()
 
-class EmbeddingProjectionBigramModel(DirectBigramLookupModel):
+class EmbeddingProjectionBigramModel(nn.Module):
     def __init__(self, vocab_size, n_embd):
-        super().__init__(vocab_size)
-        self.emb_linear_stack = nn.Sequential(
-            nn.Embedding(vocab_size, n_embd),    #Vocabulary -> Channels/Hidden numerical values
-            nn.Linear(n_embd, vocab_size)        #Channels -> Vocabulary/Logits
-        )
-        self.layers = self.emb_linear_stack
+        super().__init__()
+        self.flatten = nn.Flatten()
+        self.embedding = nn.Embedding(vocab_size, n_embd)
+        self.linear = nn.Linear(n_embd, vocab_size)
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optimizer = torch.optim.SGD(list(self.embedding.parameters())+list(self.linear.parameters()), lr= 0.1)
+
+    def forward(self, x, target=None):
+        emb = self.embedding(x)
+        logits = self.linear(emb)
+
+        if target == None:
+            return logits
+        else:
+            prediction = torch.reshape(logits, [32,32])
+            targets = torch.reshape(target, [32])
+            loss = self.criterion(prediction, targets)
+
+            self.optimizer.zero_grad()
+
+            loss.backward()
+
+            self.optimizer.step()
+
+            return logits, loss.item()
 
 '''
 1. Store a trainable token-to-logits table.
@@ -61,48 +80,127 @@ class EmbeddingProjectionBigramModel(DirectBigramLookupModel):
     torch.nn
 '''
 
-if __name__ == "__main__":
-    block_size = 8 #int(input("Block Size: "))
-    batch_size = 4 #int(input("Batch Size: "))
-    vocab = [' ', ',', '-', '.', '/', 'D', 'I', 'T', 'W', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l', 'm', 'n', 'o', 'p', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y'] #ast.literal_eval(input("Vocabulary sorted: "))
-    text =  "This is an example text, to train a character-level transformer. We expect to set a vocabulary, test text to IDs and IDs to text logic using stoi and itos, then after testing it works, we can create input/target pairs, and batches of these pairs to train the model." #input("Text: ")
-    input_s, target_s = input_target.input_target_pair(block_size, batch_size, text)
-    id_input = [stoi.string_to_ids(vocab, input_s[i]) for i in range(batch_size)]
-    id_target = [stoi.string_to_ids(vocab, target_s[i]) for i in range(batch_size)]
+def train_val_data(text, train_data_percentage):
+    n_train_data = int(len(text)*train_data_percentage)
+    train_data = text[0:n_train_data]
+    validation_data = text[n_train_data:]
+    return train_data, validation_data
+
+def get_batch(text, block_size, batch_size, indices=None):
+    x = []
+    y = []
+    upper_limit = len(text)-block_size
+    if upper_limit < 0:
+        print("Text too short for block size")
+        exit()
+
+    
+    if indices == None:
+        ind = random.choices(range(len(text)-block_size), k=batch_size)
+    else:
+        ind = indices
+
+    if max(ind) > upper_limit:
+        print("Indeces out of range")
+        exit()
+
+    print(ind)
+    for i in ind:
+        if((i+block_size+1)>len(text)):
+            print("Text too short for B*T size")
+            break
+        x.append(text[i:i+block_size])
+        y.append(text[i+1:i+block_size+1])
+
+    return x, y
+
+def train_model(model, id_input, id_target, n_lr_steps=1000):
+    #ID to tensor form
     x_tensor = torch.tensor(id_input, dtype=torch.long)
     y_tensor = torch.tensor(id_target, dtype=torch.long)
-    x_logit = torch.logit(x_tensor)
 
-    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-    print(f"Using {device} device")
-    bigram_model = EmbeddingProjectionBigramModel(32, 16).to(device)
+    loss = []
+    print("\nTraining...")
+    for x in range(n_lr_steps):
+        logits, loss_v = model(x_tensor, y_tensor)
+        loss.append(loss_v)
+
+    print(f"Loss for {n_lr_steps} steps: Min= {min(loss)} Max= {max(loss)} Avg= {sum(loss)/len(loss)}")
+    return
+
+def generate(model, id_input, norm="softmax", steps=10):
     
-    print("\n\tTraining: ")
-    for x in range(1000):
-        logits, loss = bigram_model(x_tensor, y_tensor)
-
-        print(f"step {x}: loss {loss}")
-
-    generated_text = "This"
-
-    print("\n\tGenerate: ")
-
-    print(f"Starting text: {generated_text}")
+    print("\nGenerate...")
     with torch.no_grad():
-        for y in range(10):
-            input_token = generated_text[-1]
-            input_token_id =  stoi.string_to_ids(vocab, input_token)
-            logits = bigram_model(torch.tensor(input_token_id, dtype=torch.long))
+        output_token_id = [id_input]
+        for y in range(steps):
+            logits = model(torch.tensor([output_token_id[-1]], dtype=torch.long))
             argmax_token_id = torch.argmax(logits).item()
             probabilities = torch.softmax(logits, dim=1)
             softmax_token_id = torch.multinomial(probabilities, num_samples=1).item()
 
-            output_token_id = softmax_token_id
+            if norm == "softmax":
+                output_token_id.append(softmax_token_id)
+            else:
+                output_token_id.append(argmax_token_id)
 
-            output_token = itos.ids_to_string(vocab, [output_token_id])
+        return output_token_id
+        
+        
 
-            print(f"step {y}: in_token='{input_token}' (ID:{input_token_id}) | output_token='{output_token}' (ID:{output_token_id})")
-            
-            generated_text = generated_text+output_token
+if __name__ == "__main__":
 
-    print(generated_text)
+
+    block_size = 8 #int(input("Block Size: "))
+    batch_size = 4 #int(input("Batch Size: "))
+    vocab = [' ', ',', '-', '.', '/', 'D', 'I', 'T', 'W', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l', 'm', 'n', 'o', 'p', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y'] #ast.literal_eval(input("Vocabulary sorted: "))
+    text =  "This is an example text, to train a character-level transformer. We expect to set a vocabulary, test text to IDs and IDs to text logic using stoi and itos, then after testing it works, we can create input/target pairs, and batches of these pairs to train the model." #input("Text: ")
+    
+#Train and Validation Data
+
+    tr_data, val_data = train_val_data(text, 0.9)
+
+    print(tr_data)
+    print(val_data)
+    
+
+#Random Batches of data
+
+    x, y = get_batch(tr_data, block_size, batch_size)
+    
+    print(x)
+    print(y)
+
+    #String to ID
+
+    id_input = stoi.string_to_ids(vocab, x)
+    id_target = stoi.string_to_ids(vocab, y)
+
+    print(id_input)
+    print(id_target)
+    
+#Init model
+
+    vocab_n = 32
+    n_embd = 16
+
+    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+    print(f"Using {device} device")
+    bigram_model = EmbeddingProjectionBigramModel(vocab_n, n_embd).to(device)
+    
+
+#Training
+
+    train_model(bigram_model, id_input, id_target)
+
+#Generate
+
+    id_input =  stoi.string_to_ids(vocab, "This")
+
+    id_output = generate(bigram_model, id_input[0][-1], "softmax")
+
+    print(id_output)
+
+    output_token = itos.ids_to_string(vocab, id_output)
+
+    print(output_token)
