@@ -82,10 +82,10 @@ def train_eval_data(text, train_data_percentage):
     evaluation_data = text[n_train_data:]
     return train_data, evaluation_data
 
-def get_batches(text, block_size, batch_size, indices=None):
+def get_batch(text, block_size, batch_size, indices=None):
     x = []
     y = []
-    upper_limit = len(text)-block_size
+    upper_limit = len(text)-block_size-1
     if upper_limit < 0:
         print("Text too short for block size")
         exit()
@@ -97,7 +97,7 @@ def get_batches(text, block_size, batch_size, indices=None):
         ind = indices
 
     if max(ind) > upper_limit:
-        print("Indeces out of range")
+        print("Indices out of range")
         exit()
 
     for i in ind:
@@ -109,15 +109,29 @@ def get_batches(text, block_size, batch_size, indices=None):
 
     return x, y
 
-def train_model(model, id_input, id_target, n_lr_steps=1000):
-    #ID to tensor form
-    x_tensor = torch.tensor(id_input, dtype=torch.long)
-    y_tensor = torch.tensor(id_target, dtype=torch.long)
+def train_model(model, vocab, train_data, batch_size, block_size, n_lr_steps=1000):
 
-    loss = []
     print("\nTraining...")
-    for x in range(n_lr_steps):
+    loss = []
+    for i in range(n_lr_steps):
+        x, y = get_batch(train_data, block_size, batch_size)
+        
+        #print(f"Train batches: \ninput={x}\ntarget={y}\n")
+
+        #String to ID
+
+        id_input = stoi.string_to_ids(vocab, x)
+        id_target = stoi.string_to_ids(vocab, y)
+
+        #print(f"Train IDs: \ninput={id_input}\ntarget={id_target}\n")
+
+        #ID to tensor form
+        x_tensor = torch.tensor(id_input, dtype=torch.long)
+        y_tensor = torch.tensor(id_target, dtype=torch.long)
+        
+        #Get loss
         logits, loss_v = model(x_tensor, y_tensor)
+        #Update parameters
         model.optimizer.zero_grad()
         loss_v.backward()
         model.optimizer.step()
@@ -126,14 +140,26 @@ def train_model(model, id_input, id_target, n_lr_steps=1000):
 
     print(f"Loss for {n_lr_steps} steps: Min= {min(loss)} Max= {max(loss)} Avg= {sum(loss)/len(loss)}\n")
 
-def eval_model(model, id_input, id_target):
-    x_tensor = torch.tensor(id_input, dtype=torch.long)
-    y_tensor = torch.tensor(id_target, dtype=torch.long)
-
+def eval_model(model, vocab, evaluation_data, batch_size, block_size, n_evaluations=10):
     print("\nEvaluation...")
-    logits, loss = model(x_tensor, y_tensor)
+    with torch.no_grad():
+        loss = []
+        for i in range(n_evaluations):
+            x, y = get_batch(evaluation_data, block_size, batch_size)
 
-    print(f"Loss : {loss.item()}\n")
+            #String to ID
+
+            id_input = stoi.string_to_ids(vocab, x)
+            id_target = stoi.string_to_ids(vocab, y)
+
+            x_tensor = torch.tensor(id_input, dtype=torch.long)
+            y_tensor = torch.tensor(id_target, dtype=torch.long)
+
+            
+            logits, loss_v = model(x_tensor, y_tensor)
+            loss.append(loss_v.item())
+
+        print(f"Loss for {n_evaluations} evaluations: Min= {min(loss)} Max= {max(loss)} Avg= {sum(loss)/len(loss)}\n")
 
 
 def generate(model, id_input, norm="softmax", steps=10):
@@ -171,20 +197,6 @@ if __name__ == "__main__":
     print(f"Train data: {tr_data}\n")
     print(f"Evaluation data: {eval_data}\n")
     
-
-#Random Batches of data
-
-    x, y = get_batches(tr_data, block_size, batch_size)
-    
-    print(f"Train batches: \ninput={x}\ntarget={y}\n")
-
-    #String to ID
-
-    id_input = stoi.string_to_ids(vocab, x)
-    id_target = stoi.string_to_ids(vocab, y)
-
-    print(f"Train IDs: \ninput={id_input}\ntarget={id_target}\n")
-    
 #Init model
 
     vocab_n = 32
@@ -197,22 +209,11 @@ if __name__ == "__main__":
 
 #Training
 
-    train_model(bigram_model, id_input, id_target)
+    train_model(bigram_model, vocab, tr_data, batch_size, block_size)
 
 #Evaluation
 
-    x, y = get_batches(eval_data, block_size, batch_size)
-    
-    print(f"Evaluation batches: \ninput={x}\ntarget={y}\n")
-
-    #String to ID
-
-    id_input = stoi.string_to_ids(vocab, x)
-    id_target = stoi.string_to_ids(vocab, y)
-
-    print(f"Train IDs: \ninput={id_input}\ntarget={id_target}\n")
-
-    eval_model(bigram_model, id_input, id_target)
+    eval_model(bigram_model,vocab, eval_data, batch_size, block_size)
 
 #Generate
 
