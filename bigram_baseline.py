@@ -76,13 +76,13 @@ class EmbeddingProjectionBigramModel(nn.Module):
     torch.nn
 '''
 
-def train_val_data(text, train_data_percentage):
+def train_eval_data(text, train_data_percentage):
     n_train_data = int(len(text)*train_data_percentage)
     train_data = text[0:n_train_data]
-    validation_data = text[n_train_data:]
-    return train_data, validation_data
+    evaluation_data = text[n_train_data:]
+    return train_data, evaluation_data
 
-def get_batch(text, block_size, batch_size, indices=None):
+def get_batches(text, block_size, batch_size, indices=None):
     x = []
     y = []
     upper_limit = len(text)-block_size
@@ -126,11 +126,11 @@ def train_model(model, id_input, id_target, n_lr_steps=1000):
 
     print(f"Loss for {n_lr_steps} steps: Min= {min(loss)} Max= {max(loss)} Avg= {sum(loss)/len(loss)}\n")
 
-def val_model(model, id_input, id_target):
+def eval_model(model, id_input, id_target):
     x_tensor = torch.tensor(id_input, dtype=torch.long)
     y_tensor = torch.tensor(id_target, dtype=torch.long)
 
-    print("\nValidation...")
+    print("\nEvaluation...")
     logits, loss = model(x_tensor, y_tensor)
 
     print(f"Loss : {loss.item()}\n")
@@ -164,17 +164,17 @@ if __name__ == "__main__":
     vocab = [' ', ',', '-', '.', '/', 'D', 'I', 'T', 'W', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l', 'm', 'n', 'o', 'p', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y'] #ast.literal_eval(input("Vocabulary sorted: "))
     text =  "This is an example text, to train a character-level transformer. We expect to set a vocabulary, test text to IDs and IDs to text logic using stoi and itos, then after testing it works, we can create input/target pairs, and batches of these pairs to train the model." #input("Text: ")
     
-#Train and Validation Data
+#Train and Evaluation Data
 
-    tr_data, val_data = train_val_data(text, 0.9)
+    tr_data, eval_data = train_eval_data(text, 0.9)
 
     print(f"Train data: {tr_data}\n")
-    print(f"Validation data: {val_data}\n")
+    print(f"Evaluation data: {eval_data}\n")
     
 
 #Random Batches of data
 
-    x, y = get_batch(tr_data, block_size, batch_size)
+    x, y = get_batches(tr_data, block_size, batch_size)
     
     print(f"Train batches: \ninput={x}\ntarget={y}\n")
 
@@ -199,11 +199,11 @@ if __name__ == "__main__":
 
     train_model(bigram_model, id_input, id_target)
 
-#Validation
+#Evaluation
 
-    x, y = get_batch(val_data, block_size, batch_size)
+    x, y = get_batches(eval_data, block_size, batch_size)
     
-    print(f"Validation batches: \ninput={x}\ntarget={y}\n")
+    print(f"Evaluation batches: \ninput={x}\ntarget={y}\n")
 
     #String to ID
 
@@ -212,7 +212,7 @@ if __name__ == "__main__":
 
     print(f"Train IDs: \ninput={id_input}\ntarget={id_target}\n")
 
-    val_model(bigram_model, id_input, id_target)
+    eval_model(bigram_model, id_input, id_target)
 
 #Generate
 
