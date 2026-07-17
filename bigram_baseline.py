@@ -63,13 +63,9 @@ class EmbeddingProjectionBigramModel(nn.Module):
             targets = torch.reshape(target, [32])
             loss = self.criterion(prediction, targets)
 
-            self.optimizer.zero_grad()
+            return logits, loss
 
-            loss.backward()
-
-            self.optimizer.step()
-
-            return logits, loss.item()
+            
 
 '''
 1. Store a trainable token-to-logits table.
@@ -104,7 +100,6 @@ def get_batch(text, block_size, batch_size, indices=None):
         print("Indeces out of range")
         exit()
 
-    print(ind)
     for i in ind:
         if((i+block_size+1)>len(text)):
             print("Text too short for B*T size")
@@ -123,10 +118,23 @@ def train_model(model, id_input, id_target, n_lr_steps=1000):
     print("\nTraining...")
     for x in range(n_lr_steps):
         logits, loss_v = model(x_tensor, y_tensor)
-        loss.append(loss_v)
+        model.optimizer.zero_grad()
+        loss_v.backward()
+        model.optimizer.step()
 
-    print(f"Loss for {n_lr_steps} steps: Min= {min(loss)} Max= {max(loss)} Avg= {sum(loss)/len(loss)}")
-    return
+        loss.append(loss_v.item())
+
+    print(f"Loss for {n_lr_steps} steps: Min= {min(loss)} Max= {max(loss)} Avg= {sum(loss)/len(loss)}\n")
+
+def val_model(model, id_input, id_target):
+    x_tensor = torch.tensor(id_input, dtype=torch.long)
+    y_tensor = torch.tensor(id_target, dtype=torch.long)
+
+    print("\nValidation...")
+    logits, loss = model(x_tensor, y_tensor)
+
+    print(f"Loss : {loss.item()}\n")
+
 
 def generate(model, id_input, norm="softmax", steps=10):
     
@@ -160,24 +168,22 @@ if __name__ == "__main__":
 
     tr_data, val_data = train_val_data(text, 0.9)
 
-    print(tr_data)
-    print(val_data)
+    print(f"Train data: {tr_data}\n")
+    print(f"Validation data: {val_data}\n")
     
 
 #Random Batches of data
 
     x, y = get_batch(tr_data, block_size, batch_size)
     
-    print(x)
-    print(y)
+    print(f"Train batches: \ninput={x}\ntarget={y}\n")
 
     #String to ID
 
     id_input = stoi.string_to_ids(vocab, x)
     id_target = stoi.string_to_ids(vocab, y)
 
-    print(id_input)
-    print(id_target)
+    print(f"Train IDs: \ninput={id_input}\ntarget={id_target}\n")
     
 #Init model
 
@@ -185,13 +191,28 @@ if __name__ == "__main__":
     n_embd = 16
 
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-    print(f"Using {device} device")
+    print(f"\nInit Model Using {device} device")
     bigram_model = EmbeddingProjectionBigramModel(vocab_n, n_embd).to(device)
     
 
 #Training
 
     train_model(bigram_model, id_input, id_target)
+
+#Validation
+
+    x, y = get_batch(val_data, block_size, batch_size)
+    
+    print(f"Validation batches: \ninput={x}\ntarget={y}\n")
+
+    #String to ID
+
+    id_input = stoi.string_to_ids(vocab, x)
+    id_target = stoi.string_to_ids(vocab, y)
+
+    print(f"Train IDs: \ninput={id_input}\ntarget={id_target}\n")
+
+    val_model(bigram_model, id_input, id_target)
 
 #Generate
 
